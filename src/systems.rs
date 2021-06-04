@@ -1,4 +1,6 @@
+use cgmath::num_traits::clamp;
 use crossbeam::thread;
+use glium::glutin::dpi::PhysicalSize;
 use hashbrown::HashMap;
 use vecmath::{Vector2, vec2_add, vec2_len, vec2_normalized, vec2_scale, vec2_sub};
 
@@ -135,23 +137,35 @@ fn bucket_separation(bucket: (&u32, &Vec<usize>), positions: &[Position], separa
             positions[*boid_id].value,
             positions[nearest_index].value, 
         ));
+
+        
+        if min_distance != 0.0 {
+            separations[*boid_id].direction = vec2_scale(
+                separations[*boid_id].direction, 
+                clamp(1.0 / min_distance, 0.01, 100.0)
+            );
+        }
     }
 }
 
 pub fn boid_system(positions: &[Position], forwards: &mut[Forward]) {
     let mut cells: HashMap<u32, Vec<usize>> = HashMap::with_capacity(AGENT_COUNT);
     
-    let mut cell_forwards: Vec<Forward> = vec![Forward { direction: [0.0, 0.0] }; AGENT_COUNT];
-    let mut cell_cohesions: Vec<Position> = vec![Position { value: [0.0, 0.0] }; AGENT_COUNT];
+    let mut cell_forwards: Vec<Forward> = Vec::new();
+    cell_forwards.resize(AGENT_COUNT, Forward { direction: [0.0, 0.0] });
+
+    let mut cell_cohesions: Vec<Position> = Vec::new();
+    cell_cohesions.resize(AGENT_COUNT, Position { value: [0.0, 0.0] });
     
-    let mut separations: Vec<Forward> = vec![Forward { direction: [0.0, 0.0] }; AGENT_COUNT];
+    let mut separations: Vec<Forward> = Vec::new();
+    separations.resize(AGENT_COUNT, Forward { direction: [0.0, 0.0] });
 
     // Divide all agents into separate cells to reduce calculations 
     for (i, position) in positions.iter().enumerate() {
         let h = hash(position);
 
-        if cells.contains_key(&h) {
-            cells.get_mut(&h).unwrap().push(i);
+        if let Some(bucket) = cells.get_mut(&h) {
+            bucket.push(i);
         }
         else {
             // This is really temporary... until I make my own
@@ -205,4 +219,36 @@ pub fn boid_system(positions: &[Position], forwards: &mut[Forward]) {
             forwards[*agent_id].direction = vec2_normalized(res);
         }
     }
+}
+
+pub fn keep_on_screen_system(positions: &[Position], forwards: &mut [Forward], display: &PhysicalSize<u32>) {
+    thread::scope(|s| {
+        forwards
+            .chunks_mut(CHUNK_SIZE)
+            .enumerate()
+            .for_each(|(i, chunk)| {
+                s.spawn(move |_| {
+                    let offset = CHUNK_SIZE * i;
+                    let mut index: usize;
+
+                    for (local_i, forward) in chunk.iter_mut().enumerate() {
+                        index = offset + local_i;
+
+                        if positions[index].value[0] <= 0.0 {
+                            forward.direction[0] = 2.0;
+                        }
+                        else if positions[index].value[0] > display.width as f32 {
+                            forward.direction[0] = -2.0;
+                        }
+
+                        if positions[index].value[1] <= 0.0 {
+                            forward.direction[1] = 2.0;
+                        }
+                        else if positions[index].value[1] > display.height as f32 {
+                            forward.direction[1] = -2.0;
+                        }
+                    }
+                });
+            })
+    }).expect("Thread panic");
 }

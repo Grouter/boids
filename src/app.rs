@@ -108,7 +108,9 @@ impl App {
     pub fn update(&mut self, dt: f32) {
         boid_system(&self.components.positions, &mut self.components.directions);
 
-        forward_system(dt, 40.0, &mut self.components.positions, &self.components.directions);
+        forward_system(dt, 50.0, &mut self.components.positions, &self.components.directions);
+
+        keep_on_screen_system(&self.components.positions, &mut self.components.directions, &self.display_size);
 
         caluclate_transform_system(&mut self.components.transforms, &self.components.positions);
     }
