@@ -1,0 +1,13 @@
+[package]
+name = "flocking"
+version = "0.1.0"
+authors = ["grouter"]
+edition = "2018"
+
+[dependencies]
+glium = "*"
+cgmath = "0.18.0"
+vecmath = "1.0.0"
+bisetmap = "0.1.6"
+rand = "0.8.3"
+crossbeam = "0.8"
