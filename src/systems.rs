@@ -1,28 +1,63 @@
-use bisetmap::BisetMap;
-use vecmath::{Vector2, vec2_add, vec2_len, vec2_mul, vec2_normalized, vec2_scale, vec2_sub};
+use crossbeam::thread;
+use hashbrown::HashMap;
+use vecmath::{Vector2, vec2_add, vec2_len, vec2_normalized, vec2_scale, vec2_sub};
 
-use crate::{AGENT_COUNT, CELL_SIZE, data::*};
+use crate::{AGENT_COUNT, ALIGNMENT_WEIGHT, CELL_SIZE, COHESION_WEIGHT, SEPARATION_WEIGHT, data::*};
+
+const THREAD_COUNT: usize = 8;
+const CHUNK_SIZE: usize = AGENT_COUNT / THREAD_COUNT;
+
+// TODO create handlers for chunk iterations?
+// There is a lot of duplicate code for chunk iteration...
 
 pub fn forward_system(dt: f32, speed: f32, positions: &mut [Position], forwards: &[Forward]) {
-    for i in 0..AGENT_COUNT {
-        positions[i].value = vec2_add(
-            positions[i].value, 
-            vec2_mul(forwards[i].direction, [dt * speed, dt * speed])
-        );
-    }
+    thread::scope(|s| {
+        positions
+            .chunks_mut(CHUNK_SIZE)
+            .enumerate()
+            .for_each(|(i, chunk)| {
+                s.spawn(move |_| {
+                    let offset = CHUNK_SIZE * i;
+                    let mut index: usize;
+
+                    for (local_i, position) in chunk.iter_mut().enumerate() {
+                        index = offset + local_i;
+
+                        position.value = vec2_add(
+                            position.value, 
+                            vec2_scale(forwards[index].direction, dt * speed)
+                        );
+                    }
+                });
+            })
+    }).expect("Thread panic");
 }
 
 pub fn caluclate_transform_system(transforms: &mut [Transform], positions: &[Position]) {
-    for i in 0..AGENT_COUNT {
-        let t = [
-            [1.0, 0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0, 0.0],
-            [0.0, 0.0, 1.0, 0.0],
-            [positions[i].value[0], positions[i].value[1], 0.0, 1.0],
-        ];
+    thread::scope(|s| {
+        transforms
+            .chunks_mut(CHUNK_SIZE)
+            .enumerate()
+            .for_each(|(i, chunk)| {
+                s.spawn(move |_| {
+                    let offset = CHUNK_SIZE * i;
+                    let mut index: usize;
 
-        transforms[i].transform = t;
-    }
+                    for (local_i, transform) in chunk.iter_mut().enumerate() {
+                        index = offset + local_i;
+
+                        let t = [
+                            [1.0, 0.0, 0.0, 0.0],
+                            [0.0, 1.0, 0.0, 0.0],
+                            [0.0, 0.0, 1.0, 0.0],
+                            [positions[index].value[0], positions[index].value[1], 0.0, 1.0],
+                        ];
+
+                        transform.transform = t;
+                    }
+                });
+            });
+    }).expect("Thread panic");
 } 
 
 fn vec2_normalized_safe(v: Vector2<f32>) -> Vector2<f32> {
@@ -50,8 +85,8 @@ fn hash(position: &Position) -> u32 {
 }
 
 
-fn bucket_alignment(bucket: &(u32, Vec<usize>), forwards: &[Forward], cell_forward: &mut Forward) {
-    for agent_id in &bucket.1 {
+fn bucket_alignment(bucket: (&u32, &Vec<usize>), forwards: &[Forward], cell_forward: &mut Forward) {
+    for agent_id in bucket.1 {
         cell_forward.direction[0] += forwards[*agent_id].direction[0];
         cell_forward.direction[1] += forwards[*agent_id].direction[1];
     }
@@ -59,8 +94,8 @@ fn bucket_alignment(bucket: &(u32, Vec<usize>), forwards: &[Forward], cell_forwa
     cell_forward.direction = vec2_normalized(cell_forward.direction);
 }
 
-fn bucket_cohesion(bucket: &(u32, Vec<usize>), positions: &[Position], cell_cohesion: &mut Position) {
-    for agent_id in &bucket.1 {
+fn bucket_cohesion(bucket: (&u32, &Vec<usize>), positions: &[Position], cell_cohesion: &mut Position) {
+    for agent_id in bucket.1 {
         cell_cohesion.value[0] += positions[*agent_id].value[0];
         cell_cohesion.value[1] += positions[*agent_id].value[1];
     }
@@ -68,17 +103,17 @@ fn bucket_cohesion(bucket: &(u32, Vec<usize>), positions: &[Position], cell_cohe
     cell_cohesion.value = vec2_scale(cell_cohesion.value, 1.0 / bucket.1.len() as f32);
 }
 
-fn bucket_separation(bucket: &(u32, Vec<usize>), positions: &[Position], separations: &mut [Forward]) {
+fn bucket_separation(bucket: (&u32, &Vec<usize>), positions: &[Position], separations: &mut [Forward]) {
     let mut nearest_index: usize;
     let mut min_distance: f32;
     let mut distance: f32;
 
-    for boid_id in &bucket.1 {
+    for boid_id in bucket.1 {
 
         nearest_index = 0;
         min_distance = f32::MAX;
         
-        for neighbor_id in &bucket.1 {
+        for neighbor_id in bucket.1 {
             // This if is very bad
             // TODO remove
             if boid_id.eq(neighbor_id) {
@@ -104,45 +139,68 @@ fn bucket_separation(bucket: &(u32, Vec<usize>), positions: &[Position], separat
 }
 
 pub fn boid_system(positions: &[Position], forwards: &mut[Forward]) {
-    let cells: BisetMap<u32, usize> = BisetMap::with_capacity(AGENT_COUNT);
+    let mut cells: HashMap<u32, Vec<usize>> = HashMap::with_capacity(AGENT_COUNT);
     
-    let mut cell_forwards: [Forward; AGENT_COUNT] = [Forward { direction: [0.0, 0.0] }; AGENT_COUNT];
-    let mut cell_cohesions: [Position; AGENT_COUNT] = [Position { value: [0.0, 0.0] }; AGENT_COUNT];
-    let mut separations: [Forward; AGENT_COUNT] = [Forward { direction: [0.0, 0.0] }; AGENT_COUNT];
+    let mut cell_forwards: Vec<Forward> = vec![Forward { direction: [0.0, 0.0] }; AGENT_COUNT];
+    let mut cell_cohesions: Vec<Position> = vec![Position { value: [0.0, 0.0] }; AGENT_COUNT];
+    
+    let mut separations: Vec<Forward> = vec![Forward { direction: [0.0, 0.0] }; AGENT_COUNT];
 
     // Divide all agents into separate cells to reduce calculations 
     for (i, position) in positions.iter().enumerate() {
         let h = hash(position);
-        cells.insert(h, i);
+
+        if cells.contains_key(&h) {
+            cells.get_mut(&h).unwrap().push(i);
+        }
+        else {
+            // This is really temporary... until I make my own
+            // Multi Hash Map
+            let mut v = Vec::with_capacity(1000);
+            v.push(i);
+            cells.insert(h, v);
+        }
     }
 
-    // TODO threading
     // Calculate general direction for each cell
-    let buckets = cells.collect();
-    for b in &buckets {
-        bucket_alignment(b, forwards, &mut cell_forwards[b.0 as usize]);
-        bucket_cohesion(b, positions, &mut cell_cohesions[b.0 as usize]);
-        bucket_separation(b, positions, &mut separations);
+    for b in &cells {
+        thread::scope(|s| {
+            s.spawn(|_| {
+                bucket_alignment(b, forwards, &mut cell_forwards[*b.0 as usize]);
+            });
+            s.spawn(|_| {
+                bucket_cohesion(b, positions, &mut cell_cohesions[*b.0 as usize]);
+            });
+            s.spawn(|_| {
+                bucket_separation(b, positions, &mut separations);
+            });
+        }).expect("Thread paniced");
     }
 
     // TODO threading?
     // Apply directions and cohesion
-    for b in &buckets {
-        for agent_id in &b.1 {
+    for b in &cells {
+        for agent_id in b.1 {
             let mut res = forwards[*agent_id].direction;
             
             // Cohesion
-            let mut coh = vec2_sub(cell_cohesions[b.0 as usize].value, positions[*agent_id].value);
+            let mut coh = vec2_sub(cell_cohesions[*b.0 as usize].value, positions[*agent_id].value);
             coh = vec2_normalized_safe(coh);
-            coh = vec2_scale(coh, 0.7);
+            coh = vec2_scale(coh, COHESION_WEIGHT);
             res = vec2_add(res, coh);
 
             // Separation
-            separations[*agent_id].direction = vec2_scale(separations[*agent_id].direction, 0.8);
+            separations[*agent_id].direction = vec2_scale(
+                separations[*agent_id].direction, 
+                SEPARATION_WEIGHT
+            );
             res = vec2_add(res, separations[*agent_id].direction);
             
-            //cell_forwards[b.0 as usize].direction = vec2_scale(cell_forwards[b.0 as usize].direction, 1.0);
-            res = vec2_add(res, cell_forwards[b.0 as usize].direction);
+            cell_forwards[*b.0 as usize].direction = vec2_scale(
+                cell_forwards[*b.0 as usize].direction, 
+                ALIGNMENT_WEIGHT
+            );
+            res = vec2_add(res, cell_forwards[*b.0 as usize].direction);
 
             forwards[*agent_id].direction = vec2_normalized(res);
         }

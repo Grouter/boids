@@ -1,13 +1,12 @@
 use std::fs;
 
 use cgmath::conv::array4x4;
-use glium::glutin::monitor::VideoMode;
 use glium::index::PrimitiveType;
 use glium::{Display, IndexBuffer, Program, VertexBuffer};
 use glium::glutin::ContextBuilder;
 use glium::glutin::dpi::PhysicalSize;
 use glium::glutin::event_loop::EventLoop;
-use glium::glutin::window::{Fullscreen, WindowBuilder};
+use glium::glutin::window::WindowBuilder;
 
 use crate::data::{Transform, Vertex};
 

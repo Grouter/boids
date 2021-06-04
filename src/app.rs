@@ -4,11 +4,11 @@ use glium::{Display, Frame, Program, Surface, VertexBuffer};
 use glium::glutin::event::KeyboardInput;
 use glium::glutin::dpi::{PhysicalPosition, PhysicalSize};
 use rand::Rng;
-use vecmath::{Matrix4, Vector2};
+use vecmath::Matrix4;
 
-use crate::systems::*;
 use crate::graphics::*;
 use crate::data::*;
+use crate::systems::*;
 use crate::{AGENT_COUNT, AGENT_SIZE, INITIAL_DISPLAY_SIZE};
 
 pub struct App {
@@ -24,9 +24,9 @@ pub struct App {
 }
 
 pub struct Components {
-    pub directions: [Forward; AGENT_COUNT],
-    pub positions: [Position; AGENT_COUNT],
-    pub transforms: [Transform; AGENT_COUNT],
+    pub directions: Vec<Forward>,
+    pub positions: Vec<Position>,
+    pub transforms: Vec<Transform>,
 }
 
 impl App {
@@ -44,22 +44,22 @@ impl App {
         let agent_mesh = create_mesh(&display, &vertices, &indices);
 
         let mut components = Components {
-            directions: [Forward { direction: [1.0, 0.0] }; AGENT_COUNT],
-            positions: [Position { value: [0.0, 0.0] }; AGENT_COUNT],
-            transforms: [default_transform(); AGENT_COUNT]
+            directions: vec![Forward { direction: [0.0, 0.0] }; AGENT_COUNT],
+            positions: vec![Position { value: [0.0, 0.0] }; AGENT_COUNT],
+            transforms: vec![default_transform(); AGENT_COUNT]
         };
 
         // Generate random positions and directions
         let mut rng = rand::thread_rng();
 
-        for p in &mut components.positions {
+        for p in components.positions.iter_mut() {
             p.value = [
                 rng.gen_range(0.0..2000.0),
                 rng.gen_range(0.0..1000.0),
             ];
         }
 
-        for d in &mut components.directions {
+        for d in components.directions.iter_mut() {
             d.direction = [
                 rng.gen_range(-1.0..1.0),
                 rng.gen_range(-1.0..1.0),
@@ -113,13 +113,9 @@ impl App {
         caluclate_transform_system(&mut self.components.transforms, &self.components.positions);
     }
 
-    pub fn on_keyboard(&mut self, _input: KeyboardInput) {
+    pub fn on_keyboard(&mut self, _input: KeyboardInput) {}
 
-    }
-
-    pub fn on_mouse_move(&mut self, position: &PhysicalPosition<f64>) {
-        
-    }
+    pub fn on_mouse_move(&mut self, _position: &PhysicalPosition<f64>) {}
 
     pub fn on_window_resize(&mut self, size: &PhysicalSize<u32>) {
         self.display_size = *size;

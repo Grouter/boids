@@ -18,10 +18,14 @@ const BG: [f32; 4] = [0.1, 0.1, 0.1, 1.0];
 
 pub const INITIAL_DISPLAY_SIZE: [u32; 2] = [1280, 720];
 
-pub const AGENT_COUNT: usize = 1000;
-pub const AGENT_SIZE: f32 = 10.0;
+pub const AGENT_COUNT: usize = 5_000;
+pub const AGENT_SIZE: f32 = 5.0;
 
 pub const CELL_SIZE: f32 = 100.0;
+
+pub const ALIGNMENT_WEIGHT: f32 = 1.01;
+pub const COHESION_WEIGHT: f32 = 0.4;
+pub const SEPARATION_WEIGHT: f32 = 1.0;
 
 fn main() {
     let event_loop = EventLoop::new();
