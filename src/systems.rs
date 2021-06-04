@@ -142,7 +142,7 @@ fn bucket_separation(bucket: (&u32, &Vec<usize>), positions: &[Position], separa
         if min_distance != 0.0 {
             separations[*boid_id].direction = vec2_scale(
                 separations[*boid_id].direction, 
-                clamp(1.0 / min_distance, 0.01, 100.0)
+                clamp(1.0 / min_distance, 0.01, 1000.0)
             );
         }
     }

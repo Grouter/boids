@@ -1,5 +1,3 @@
-use std::u32;
-
 use glium::{Display, Frame, Program, Surface, VertexBuffer};
 use glium::glutin::event::KeyboardInput;
 use glium::glutin::dpi::{PhysicalPosition, PhysicalSize};
