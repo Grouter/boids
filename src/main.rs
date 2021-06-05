@@ -19,13 +19,13 @@ const BG: [f32; 4] = [0.1, 0.1, 0.1, 1.0];
 pub const INITIAL_DISPLAY_SIZE: [u32; 2] = [1280, 720];
 
 pub const AGENT_COUNT: usize = 5_000;
-pub const AGENT_SIZE: f32 = 5.0;
+pub const AGENT_SIZE: f32 = 7.0;
 
 pub const CELL_SIZE: f32 = 100.0;
 
 pub const ALIGNMENT_WEIGHT: f32 = 0.95;
 pub const COHESION_WEIGHT: f32 = 0.2;
-pub const SEPARATION_WEIGHT: f32 = 7.0;
+pub const SEPARATION_WEIGHT: f32 = 8.0;
 
 fn main() {
     let event_loop = EventLoop::new();
@@ -52,12 +52,12 @@ fn main() {
                 WindowEvent::CloseRequested => {
                     *control_flow = ControlFlow::Exit;
                 }
-                WindowEvent::KeyboardInput { input, .. } => {
+                /*WindowEvent::KeyboardInput { input, .. } => {
                     app.on_keyboard(input);
                 }
                 WindowEvent::CursorMoved { position, .. } => {
                     app.on_mouse_move(&position);
-                }
+                }*/
                 WindowEvent::Resized(size) => {
                     app.on_window_resize(&size);
                 }

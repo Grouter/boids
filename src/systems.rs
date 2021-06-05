@@ -35,30 +35,38 @@ pub fn forward_system(dt: f32, speed: f32, positions: &mut [Position], forwards:
     }).expect("Thread panic");
 }
 
-pub fn caluclate_transform_system(transforms: &mut [Transform], positions: &[Position]) {
+pub fn caluclate_transform_system(transforms: &mut [Transform], positions: &[Position], forwards: &[Forward]) {
+
+    fn caluclate_transform_job(transform: &mut Transform, position: &Position, forward: &Forward) {
+        let cos = forward.direction[0];
+        let sin = -forward.direction[1];
+
+        let t = [
+            [cos,-sin, 0.0, 0.0],
+            [sin, cos, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [position.value[0], position.value[1], 0.0, 1.0],
+        ];
+
+        transform.transform = t;
+    }
+
+    let ti = transforms.chunks_mut(CHUNK_SIZE);
+    let pi = positions.chunks(CHUNK_SIZE);
+    let fi = forwards.chunks(CHUNK_SIZE);
+
     thread::scope(|s| {
-        transforms
-            .chunks_mut(CHUNK_SIZE)
-            .enumerate()
-            .for_each(|(i, chunk)| {
-                s.spawn(move |_| {
-                    let offset = CHUNK_SIZE * i;
-                    let mut index: usize;
-
-                    for (local_i, transform) in chunk.iter_mut().enumerate() {
-                        index = offset + local_i;
-
-                        let t = [
-                            [1.0, 0.0, 0.0, 0.0],
-                            [0.0, 1.0, 0.0, 0.0],
-                            [0.0, 0.0, 1.0, 0.0],
-                            [positions[index].value[0], positions[index].value[1], 0.0, 1.0],
-                        ];
-
-                        transform.transform = t;
-                    }
-                });
+        ti.zip(pi).zip(fi).for_each(|((tc, pc), fc)| {
+            s.spawn(move |_| {
+                tc.iter_mut()
+                .zip(pc.iter())
+                .zip(fc.iter())
+                .for_each(
+                    |((transform, position), forward)| 
+                        caluclate_transform_job(transform, position, forward)
+                );
             });
+        });
     }).expect("Thread panic");
 } 
 
@@ -235,18 +243,20 @@ pub fn keep_on_screen_system(positions: &[Position], forwards: &mut [Forward], d
                         index = offset + local_i;
 
                         if positions[index].value[0] <= 0.0 {
-                            forward.direction[0] = 2.0;
+                            forward.direction[0] = 1.0;
                         }
                         else if positions[index].value[0] > display.width as f32 {
-                            forward.direction[0] = -2.0;
+                            forward.direction[0] = -1.0;
                         }
 
                         if positions[index].value[1] <= 0.0 {
-                            forward.direction[1] = 2.0;
+                            forward.direction[1] = 1.0;
                         }
                         else if positions[index].value[1] > display.height as f32 {
-                            forward.direction[1] = -2.0;
+                            forward.direction[1] = -1.0;
                         }
+
+                        forward.direction = vec2_normalized_safe(forward.direction);
                     }
                 });
             })

@@ -15,20 +15,18 @@ pub struct Mesh {
     pub i_buffer: IndexBuffer<u16>,
 }
 
-pub fn create_agent_shape(size: f32, color: [f32; 3]) -> ([Vertex; 4], [u16; 6]) {
+pub fn create_agent_shape(size: f32, color: [f32; 3]) -> ([Vertex; 3], [u16; 3]) {
     let size_h = size / 2.0;
 
     // Create a simple square
     let vertices = [
         Vertex { position: [-size_h,  size_h], color },
-        Vertex { position: [ size_h,  size_h], color },
-        Vertex { position: [ size_h, -size_h], color },
+        Vertex { position: [ size_h + 5.0, 0.0], color },
         Vertex { position: [-size_h, -size_h], color },
     ];
 
     let indices = [
-        1, 0, 3,
-        3, 2, 1,
+        0, 2, 1,
     ];
 
     (vertices, indices)

@@ -2,7 +2,7 @@ use glium::{Display, Frame, Program, Surface, VertexBuffer};
 use glium::glutin::event::KeyboardInput;
 use glium::glutin::dpi::{PhysicalPosition, PhysicalSize};
 use rand::Rng;
-use vecmath::Matrix4;
+use vecmath::{Matrix4, vec2_normalized};
 
 use crate::graphics::*;
 use crate::data::*;
@@ -58,10 +58,10 @@ impl App {
         }
 
         for d in components.directions.iter_mut() {
-            d.direction = [
+            d.direction = vec2_normalized([
                 rng.gen_range(-1.0..1.0),
                 rng.gen_range(-1.0..1.0),
-            ];
+            ]);
         }
 
         let instance_buffer = VertexBuffer::dynamic(
@@ -110,7 +110,11 @@ impl App {
 
         keep_on_screen_system(&self.components.positions, &mut self.components.directions, &self.display_size);
 
-        caluclate_transform_system(&mut self.components.transforms, &self.components.positions);
+        caluclate_transform_system(
+            &mut self.components.transforms, 
+            &self.components.positions, 
+            &self.components.directions
+        );
     }
 
     pub fn on_keyboard(&mut self, _input: KeyboardInput) {}
