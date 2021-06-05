@@ -50,16 +50,14 @@ pub fn create_mesh(display: &Display, vertices: &[Vertex], indices: &[u16]) -> M
 pub fn create_display(event_loop: &EventLoop<()>, w: u32, h: u32) -> Display {
     let display = Display::new(
         WindowBuilder::new()
-            .with_title("Boids")
-            .with_maximized(true),
+            .with_inner_size(PhysicalSize {
+                width: w,
+                height: h
+            })
+            .with_title("Boids"),
         ContextBuilder::new(),
         &event_loop
     ).expect("Could not create display");
-
-    display.gl_window().resize(PhysicalSize {
-        width: w,
-        height: h
-    });
 
     display
 }
