@@ -52,12 +52,6 @@ fn main() {
                 WindowEvent::CloseRequested => {
                     *control_flow = ControlFlow::Exit;
                 }
-                /*WindowEvent::KeyboardInput { input, .. } => {
-                    app.on_keyboard(input);
-                }
-                WindowEvent::CursorMoved { position, .. } => {
-                    app.on_mouse_move(&position);
-                }*/
                 WindowEvent::Resized(size) => {
                     app.on_window_resize(&size);
                 }

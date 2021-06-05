@@ -1,6 +1,5 @@
 use glium::{Display, Frame, Program, Surface, VertexBuffer};
-use glium::glutin::event::KeyboardInput;
-use glium::glutin::dpi::{PhysicalPosition, PhysicalSize};
+use glium::glutin::dpi::PhysicalSize;
 use rand::Rng;
 use vecmath::{Matrix4, vec2_normalized};
 
@@ -108,7 +107,7 @@ impl App {
 
         forward_system(dt, 50.0, &mut self.components.positions, &self.components.directions);
 
-        keep_on_screen_system(&self.components.positions, &mut self.components.directions, &self.display_size);
+        wrap_screen_system(&mut self.components.positions, &self.display_size);
 
         caluclate_transform_system(
             &mut self.components.transforms, 
@@ -116,10 +115,6 @@ impl App {
             &self.components.directions
         );
     }
-
-    pub fn on_keyboard(&mut self, _input: KeyboardInput) {}
-
-    pub fn on_mouse_move(&mut self, _position: &PhysicalPosition<f64>) {}
 
     pub fn on_window_resize(&mut self, size: &PhysicalSize<u32>) {
         self.display_size = *size;

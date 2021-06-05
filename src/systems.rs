@@ -9,35 +9,37 @@ use crate::{AGENT_COUNT, ALIGNMENT_WEIGHT, CELL_SIZE, COHESION_WEIGHT, SEPARATIO
 const THREAD_COUNT: usize = 8;
 const CHUNK_SIZE: usize = AGENT_COUNT / THREAD_COUNT;
 
-// TODO create handlers for chunk iterations?
-// There is a lot of duplicate code for chunk iteration...
+// Moves boids forward.
+pub fn forward_system(delta_time: f32, speed: f32, positions: &mut [Position], forwards: &[Forward]) {
+    let real_speed = delta_time * speed;
+    
+    let forward_job = |position: &mut Position, forward: &Forward| {
+        position.value = vec2_add(
+            position.value,
+            vec2_scale(forward.direction, real_speed)
+        );
+    };
 
-pub fn forward_system(dt: f32, speed: f32, positions: &mut [Position], forwards: &[Forward]) {
+    let pi = positions.chunks_mut(CHUNK_SIZE);
+    let fi = forwards.chunks(CHUNK_SIZE);
+
     thread::scope(|s| {
-        positions
-            .chunks_mut(CHUNK_SIZE)
-            .enumerate()
-            .for_each(|(i, chunk)| {
-                s.spawn(move |_| {
-                    let offset = CHUNK_SIZE * i;
-                    let mut index: usize;
-
-                    for (local_i, position) in chunk.iter_mut().enumerate() {
-                        index = offset + local_i;
-
-                        position.value = vec2_add(
-                            position.value, 
-                            vec2_scale(forwards[index].direction, dt * speed)
-                        );
-                    }
-                });
-            })
+        pi.zip(fi).for_each(|(pc, fc)| {
+            s.spawn(move |_| {
+                pc.iter_mut()
+                    .zip(fc.iter())
+                    .for_each(
+                        |(position, forward)| 
+                            forward_job(position, forward)
+                    );
+            });
+        });
     }).expect("Thread panic");
 }
 
 pub fn caluclate_transform_system(transforms: &mut [Transform], positions: &[Position], forwards: &[Forward]) {
 
-    fn caluclate_transform_job(transform: &mut Transform, position: &Position, forward: &Forward) {
+    let caluclate_transform_job = |transform: &mut Transform, position: &Position, forward: &Forward| {
         let cos = forward.direction[0];
         let sin = -forward.direction[1];
 
@@ -49,7 +51,7 @@ pub fn caluclate_transform_system(transforms: &mut [Transform], positions: &[Pos
         ];
 
         transform.transform = t;
-    }
+    };
 
     let ti = transforms.chunks_mut(CHUNK_SIZE);
     let pi = positions.chunks(CHUNK_SIZE);
@@ -94,7 +96,7 @@ fn hash(position: &Position) -> u32 {
     h % AGENT_COUNT as u32
 }
 
-
+// Calculates an average direction of each boid inside a cell
 fn bucket_alignment(bucket: (&u32, &Vec<usize>), forwards: &[Forward], cell_forward: &mut Forward) {
     for agent_id in bucket.1 {
         cell_forward.direction[0] += forwards[*agent_id].direction[0];
@@ -104,6 +106,7 @@ fn bucket_alignment(bucket: (&u32, &Vec<usize>), forwards: &[Forward], cell_forw
     cell_forward.direction = vec2_normalized(cell_forward.direction);
 }
 
+// Calculates an average position of each boid inside a cell
 fn bucket_cohesion(bucket: (&u32, &Vec<usize>), positions: &[Position], cell_cohesion: &mut Position) {
     for agent_id in bucket.1 {
         cell_cohesion.value[0] += positions[*agent_id].value[0];
@@ -113,6 +116,9 @@ fn bucket_cohesion(bucket: (&u32, &Vec<usize>), positions: &[Position], cell_coh
     cell_cohesion.value = vec2_scale(cell_cohesion.value, 1.0 / bucket.1.len() as f32);
 }
 
+// Calculate speparation for each boid inside a cell.
+// This only checks each boid against boids from the same cell
+// that can cause weird artefacts because the closest boid can be from other cell...
 fn bucket_separation(bucket: (&u32, &Vec<usize>), positions: &[Position], separations: &mut [Forward]) {
     let mut nearest_index: usize;
     let mut min_distance: f32;
@@ -157,6 +163,7 @@ fn bucket_separation(bucket: (&u32, &Vec<usize>), positions: &[Position], separa
 }
 
 pub fn boid_system(positions: &[Position], forwards: &mut[Forward]) {
+    // This hashmap will be replaced by multi hash map
     let mut cells: HashMap<u32, Vec<usize>> = HashMap::with_capacity(AGENT_COUNT);
     
     let mut cell_forwards: Vec<Forward> = Vec::new();
@@ -176,8 +183,7 @@ pub fn boid_system(positions: &[Position], forwards: &mut[Forward]) {
             bucket.push(i);
         }
         else {
-            // This is really temporary... until I make my own
-            // Multi Hash Map
+            // This is really temporary... until I make my own multi hash map
             let mut v = Vec::with_capacity(1000);
             v.push(i);
             cells.insert(h, v);
@@ -229,36 +235,37 @@ pub fn boid_system(positions: &[Position], forwards: &mut[Forward]) {
     }
 }
 
-pub fn keep_on_screen_system(positions: &[Position], forwards: &mut [Forward], display: &PhysicalSize<u32>) {
+// Wraps boid arund the screen.
+// If boid will try to go out of a screen, it will appear on the other side.
+pub fn wrap_screen_system(positions: &mut[Position], display: &PhysicalSize<u32>) {
+
+    let wrap_screen_job = |position: &mut Position| {
+        if position.value[0] < 0.0 {
+            position.value[0] = display.width as f32;
+        }
+        else if position.value[0] > display.width as f32 {
+            position.value[0] = 0.0;
+        }
+
+        if position.value[1] < 0.0 {
+            position.value[1] = display.height as f32;
+        }
+        else if position.value[1] > display.height as f32 {
+            position.value[1] = 0.0;
+        }
+    };
+
+    let pi = positions.chunks_mut(CHUNK_SIZE);
+
     thread::scope(|s| {
-        forwards
-            .chunks_mut(CHUNK_SIZE)
-            .enumerate()
-            .for_each(|(i, chunk)| {
-                s.spawn(move |_| {
-                    let offset = CHUNK_SIZE * i;
-                    let mut index: usize;
-
-                    for (local_i, forward) in chunk.iter_mut().enumerate() {
-                        index = offset + local_i;
-
-                        if positions[index].value[0] <= 0.0 {
-                            forward.direction[0] = 1.0;
-                        }
-                        else if positions[index].value[0] > display.width as f32 {
-                            forward.direction[0] = -1.0;
-                        }
-
-                        if positions[index].value[1] <= 0.0 {
-                            forward.direction[1] = 1.0;
-                        }
-                        else if positions[index].value[1] > display.height as f32 {
-                            forward.direction[1] = -1.0;
-                        }
-
-                        forward.direction = vec2_normalized_safe(forward.direction);
-                    }
-                });
-            })
+        pi.for_each(|pc| {
+            s.spawn(move |_| {
+                pc.iter_mut()
+                    .for_each(
+                        |position| 
+                            wrap_screen_job(position)
+                    );
+            });
+        });
     }).expect("Thread panic");
 }
