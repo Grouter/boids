@@ -64,8 +64,9 @@ fn main() {
                 time = new_time;
 
                 // Logic
+                let t = Instant::now();
                 app.update(delta);
-                println!("Update time: {}", delta);
+                println!("Update time: {} ms", t.elapsed().as_millis());
     
                 // Graphics
                 let mut target = app.display.draw();

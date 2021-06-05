@@ -2,7 +2,7 @@ use cgmath::num_traits::clamp;
 use crossbeam::thread;
 use glium::glutin::dpi::PhysicalSize;
 use hashbrown::HashMap;
-use vecmath::{Vector2, vec2_add, vec2_len, vec2_normalized, vec2_scale, vec2_sub};
+use vecmath::{Vector2, vec2_add, vec2_len, vec2_normalized, vec2_scale, vec2_square_len, vec2_sub};
 
 use crate::{AGENT_COUNT, ALIGNMENT_WEIGHT, CELL_SIZE, COHESION_WEIGHT, SEPARATION_WEIGHT, data::*};
 
@@ -136,7 +136,7 @@ fn bucket_separation(boids: &[usize], positions: &[Position], separations: &mut 
                 continue;
             }
 
-            distance = vec2_len(vec2_sub(
+            distance = vec2_square_len(vec2_sub(
                 positions[*boid_id].value,
                 positions[*neighbor_id].value
             ));
@@ -152,10 +152,12 @@ fn bucket_separation(boids: &[usize], positions: &[Position], separations: &mut 
             positions[nearest_index].value,
         ));
 
+        min_distance = min_distance.sqrt();
+
         if min_distance != 0.0 {
             separations[*boid_id].direction = vec2_scale(
                 separations[*boid_id].direction,
-                clamp(1.0 / min_distance, 0.01, 1000.0)
+                clamp(1.0 / min_distance, 0.01, 100.0)
             );
         }
     }
@@ -204,7 +206,6 @@ pub fn boid_system(positions: &[Position], forwards: &mut[Forward]) {
         }).expect("Thread paniced");
     }
 
-    // TODO threading?
     // Apply directions and cohesion
     for b in &cells {
         for agent_id in b.1 {
@@ -212,9 +213,14 @@ pub fn boid_system(positions: &[Position], forwards: &mut[Forward]) {
 
             // Cohesion
             let mut coh = vec2_sub(cell_cohesions[*b.0 as usize].value, positions[*agent_id].value);
-            coh = vec2_normalized_safe(coh);
-            coh = vec2_scale(coh, COHESION_WEIGHT);
-            res = vec2_add(res, coh);
+            // Distance to cohesion point
+            let d2c = vec2_len(coh);
+
+            if d2c != 0.0 {
+                coh = vec2_scale(coh, clamp(1.0 / d2c, 0.01, 100.0));
+                coh = vec2_scale(coh, COHESION_WEIGHT);
+                res = vec2_add(res, coh);
+            }
 
             // Separation
             separations[*agent_id].direction = vec2_scale(
@@ -260,10 +266,7 @@ pub fn wrap_screen_system(positions: &mut[Position], display: &PhysicalSize<u32>
         pi.for_each(|pc| {
             s.spawn(move |_| {
                 pc.iter_mut()
-                    .for_each(
-                        |position|
-                            wrap_screen_job(position)
-                    );
+                    .for_each(wrap_screen_job);
             });
         });
     }).expect("Thread panic");
