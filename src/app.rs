@@ -1,7 +1,10 @@
+use std::f32::consts::PI;
+
 use glium::{Display, Frame, Program, Surface, VertexBuffer};
 use glium::glutin::dpi::PhysicalSize;
 use rand::Rng;
-use vecmath::{Matrix4, vec2_normalized};
+use rand::prelude::ThreadRng;
+use vecmath::Matrix4;
 
 use crate::graphics::*;
 use crate::data::*;
@@ -26,6 +29,38 @@ pub struct Components {
     pub transforms: Vec<Transform>,
 }
 
+fn get_random_positions(count: usize, rng: &mut ThreadRng) -> Vec<Position> {
+    let mut positions = Vec::with_capacity(count);
+
+    for _ in 0..count {
+        positions.push(Position {
+            value: [
+                rng.gen_range(0.0..INITIAL_DISPLAY_SIZE[0] as f32),
+                rng.gen_range(0.0..INITIAL_DISPLAY_SIZE[1] as f32),
+            ]
+        });
+    }
+
+    positions
+}
+
+fn get_random_directions(count: usize, rng: &mut ThreadRng) -> Vec<Forward> {
+    let mut forwards = Vec::with_capacity(count);
+
+    const TWO_PI: f32 = PI * 2.0;
+    let mut angle: f32;
+
+    for _ in 0..count {
+        angle = rng.gen_range(0.0..TWO_PI);
+
+        forwards.push(Forward {
+            direction: [angle.cos(), angle.sin()]
+        });
+    }
+
+    forwards
+}
+
 impl App {
     pub fn new(display: Display) -> App {
         let shader = load_program(
@@ -40,28 +75,13 @@ impl App {
         );
         let agent_mesh = create_mesh(&display, &vertices, &indices);
 
-        let mut components = Components {
-            directions: vec![Forward { direction: [0.0, 0.0] }; AGENT_COUNT],
-            positions: vec![Position { value: [0.0, 0.0] }; AGENT_COUNT],
-            transforms: vec![default_transform(); AGENT_COUNT]
-        };
-
-        // Generate random positions and directions
         let mut rng = rand::thread_rng();
 
-        for p in components.positions.iter_mut() {
-            p.value = [
-                rng.gen_range(0.0..2000.0),
-                rng.gen_range(0.0..1000.0),
-            ];
-        }
-
-        for d in components.directions.iter_mut() {
-            d.direction = vec2_normalized([
-                rng.gen_range(-1.0..1.0),
-                rng.gen_range(-1.0..1.0),
-            ]);
-        }
+        let components = Components {
+            directions: get_random_directions(AGENT_COUNT, &mut rng),
+            positions: get_random_positions(AGENT_COUNT, &mut rng),
+            transforms: vec![default_transform(); AGENT_COUNT]
+        };
 
         let instance_buffer = VertexBuffer::dynamic(
             &display, 
