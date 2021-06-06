@@ -1,13 +1,12 @@
 use cgmath::num_traits::clamp;
-use crossbeam::thread;
 use glium::glutin::dpi::PhysicalSize;
 use hashbrown::HashMap;
+use itertools::izip;
+use rayon::iter::{IndexedParallelIterator, ParallelIterator};
+use rayon::slice::{ParallelSlice, ParallelSliceMut};
 use vecmath::{Vector2, vec2_add, vec2_len, vec2_normalized, vec2_scale, vec2_square_len, vec2_sub};
 
 use crate::{AGENT_COUNT, ALIGNMENT_WEIGHT, CELL_SIZE, COHESION_WEIGHT, SEPARATION_WEIGHT, data::*};
-
-const THREAD_COUNT: usize = 8;
-const CHUNK_SIZE: usize = AGENT_COUNT / THREAD_COUNT;
 
 // Moves boids forward.
 pub fn forward_system(delta_time: f32, speed: f32, positions: &mut [Position], forwards: &[Forward]) {
@@ -20,21 +19,17 @@ pub fn forward_system(delta_time: f32, speed: f32, positions: &mut [Position], f
         );
     };
 
-    let pi = positions.chunks_mut(CHUNK_SIZE);
-    let fi = forwards.chunks(CHUNK_SIZE);
+    let chunk_size = AGENT_COUNT / rayon::current_num_threads();
 
-    thread::scope(|s| {
-        pi.zip(fi).for_each(|(pc, fc)| {
-            s.spawn(move |_| {
-                pc.iter_mut()
-                    .zip(fc.iter())
-                    .for_each(
-                        |(position, forward)|
-                            forward_job(position, forward)
-                    );
-            });
+    let pi = positions.par_chunks_mut(chunk_size);
+    let fi = forwards.par_chunks(chunk_size);
+    
+    pi.zip(fi)
+        .for_each(|(position_chunk, forward_chunk)| {
+            for (position, forward) in izip!(position_chunk, forward_chunk) {
+                forward_job(position, forward);
+            }
         });
-    }).expect("Thread panic");
 }
 
 pub fn caluclate_transform_system(transforms: &mut [Transform], positions: &[Position], forwards: &[Forward]) {
@@ -53,23 +48,18 @@ pub fn caluclate_transform_system(transforms: &mut [Transform], positions: &[Pos
         transform.transform = t;
     };
 
-    let ti = transforms.chunks_mut(CHUNK_SIZE);
-    let pi = positions.chunks(CHUNK_SIZE);
-    let fi = forwards.chunks(CHUNK_SIZE);
+    let chunk_size = AGENT_COUNT / rayon::current_num_threads();
 
-    thread::scope(|s| {
-        ti.zip(pi).zip(fi).for_each(|((tc, pc), fc)| {
-            s.spawn(move |_| {
-                tc.iter_mut()
-                .zip(pc.iter())
-                .zip(fc.iter())
-                .for_each(
-                    |((transform, position), forward)|
-                        caluclate_transform_job(transform, position, forward)
-                );
-            });
+    let ti = transforms.par_chunks_mut(chunk_size);
+    let pi = positions.par_chunks(chunk_size);
+    let fi = forwards.par_chunks(chunk_size);
+
+    ti.zip(pi).zip(fi)
+        .for_each(|((transform_chunk, position_chunk), forward_chunk)| {
+            for (t, p, f) in izip!(transform_chunk.iter_mut(), position_chunk.iter(), forward_chunk.iter()) {
+                caluclate_transform_job(t, p, f)
+            }
         });
-    }).expect("Thread panic");
 }
 
 fn vec2_normalized_safe(v: Vector2<f32>) -> Vector2<f32> {
@@ -167,6 +157,7 @@ pub fn boid_system(positions: &[Position], forwards: &mut[Forward]) {
     // This hashmap will be replaced by multi hash map
     let mut cells: HashMap<u32, Vec<usize>> = HashMap::with_capacity(AGENT_COUNT);
 
+    // These array are big and storing cell data in them causes random placement.
     let mut cell_forwards: Vec<Forward> = Vec::new();
     cell_forwards.resize(AGENT_COUNT, Forward { direction: [0.0, 0.0] });
 
@@ -193,17 +184,9 @@ pub fn boid_system(positions: &[Position], forwards: &mut[Forward]) {
 
     // Calculate general direction for each cell
     for (cell_id, boids) in &cells {
-        thread::scope(|s| {
-            s.spawn(|_| {
-                bucket_alignment(boids, forwards, &mut cell_forwards[*cell_id as usize]);
-            });
-            s.spawn(|_| {
-                bucket_cohesion(boids, positions, &mut cell_cohesions[*cell_id as usize]);
-            });
-            s.spawn(|_| {
-                bucket_separation(boids, positions, &mut separations);
-            });
-        }).expect("Thread paniced");
+        bucket_alignment(boids, forwards, &mut cell_forwards[*cell_id as usize]);
+        bucket_cohesion(boids, positions, &mut cell_cohesions[*cell_id as usize]);
+        bucket_separation(boids, positions, &mut separations);
     }
 
     // Apply directions and cohesion
@@ -260,14 +243,12 @@ pub fn wrap_screen_system(positions: &mut[Position], display: &PhysicalSize<u32>
         }
     };
 
-    let pi = positions.chunks_mut(CHUNK_SIZE);
+    let threads = rayon::current_num_threads();
+    let pi = positions.par_chunks_mut(AGENT_COUNT / threads);
 
-    thread::scope(|s| {
-        pi.for_each(|pc| {
-            s.spawn(move |_| {
-                pc.iter_mut()
-                    .for_each(wrap_screen_job);
-            });
-        });
-    }).expect("Thread panic");
+    pi.for_each(|position_chunk| {
+        for position in position_chunk {
+            wrap_screen_job(position);
+        }
+    });
 }
